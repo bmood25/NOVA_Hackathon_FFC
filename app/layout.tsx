@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Front House Cubbies",
-  description: "AI-verified restaurant pickup cubbies",
+  title: "Front House",
+  description: "AI-verified restaurant pickup",
 };
 
 export const viewport: Viewport = {

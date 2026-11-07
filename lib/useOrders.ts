@@ -1,15 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getInspections, getOrders, subscribe } from "./api";
+import { getInspectingIds, getInspections, getOrders, subscribe } from "./api";
 import type { Inspection, Order } from "./types";
 
-const POLL_MS = 2000;
+const POLL_MS = 1500;
 
-/** Orders + latest inspection per order, refreshed every 2s and on mock change events. */
-export function useOrders() {
+export type OrdersSnapshot = {
+  orders: Order[] | null;
+  /** Latest-first inspection history, fetched for flagged orders only. */
+  inspections: Record<number, Inspection[]>;
+  /** Orders with a photo check in flight (display-only VERIFYING). */
+  inspecting: Set<number>;
+  error: string | null;
+  refresh: () => Promise<void>;
+};
+
+/** Read-only view of order state, polled every 1.5s plus instant mock change events. */
+export function useOrders(): OrdersSnapshot {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [inspections, setInspections] = useState<Record<number, Inspection[]>>({});
+  const [inspecting, setInspectingState] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const again = useRef(false);
@@ -21,15 +32,14 @@ export function useOrders() {
     }
     inFlight.current = true;
     try {
-      const next = await getOrders();
-      setOrders(next);
-      setError(null);
-      // Only fetch inspection history for orders that need it on screen.
-      const needs = next.filter((o) => o.status === "flagged" || o.status === "pending");
+      const [next, busyIds] = await Promise.all([getOrders(), getInspectingIds()]);
       const pairs = await Promise.all(
-        needs.map(async (o) => [o.id, await getInspections(o.id)] as const),
+        next.filter((o) => o.status === "flagged").map(async (o) => [o.id, await getInspections(o.id)] as const),
       );
+      setOrders(next);
+      setInspectingState(new Set(busyIds));
       setInspections(Object.fromEntries(pairs));
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -53,5 +63,5 @@ export function useOrders() {
     };
   }, [refresh]);
 
-  return { orders, inspections, error, refresh };
+  return { orders, inspections, inspecting, error, refresh };
 }

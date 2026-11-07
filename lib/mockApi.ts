@@ -26,6 +26,8 @@ type MockState = {
   inspections: Inspection[];
   nextId: number;
   forceNext: ForceMode;
+  /** Display-only: order ids with a photo check in flight (VERIFYING). Not in the shared contract. */
+  inspecting: number[];
 };
 
 function minutesAgo(m: number) {
@@ -70,6 +72,7 @@ function seed(): MockState {
     inspections: [],
     nextId: 21,
     forceNext: "auto",
+    inspecting: [],
   };
 }
 
@@ -79,7 +82,11 @@ function load(): MockState {
   if (typeof window === "undefined") return seed();
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as MockState;
+    if (raw) {
+      const s = JSON.parse(raw) as MockState;
+      s.inspecting ??= [];
+      return s;
+    }
   } catch {
     /* fall through to seed */
   }
@@ -168,11 +175,11 @@ export async function inspectOrder(
   _image: string,
   opts?: { force?: Verdict },
 ): Promise<Inspection> {
-  await delay(700 + Math.random() * 600); // feels like a model call
+  await delay(1600 + Math.random() * 600); // feels like a model call; long enough to see VERIFYING
   const s = load();
   const order = findOrder(s, orderId);
   if (order.status === "delivered") throw new Error(`Order ${orderId} was already picked up`);
-  if (order.status === "in_cubby") throw new Error(`Order ${orderId} is already in cubby ${order.cubby}`);
+  if (order.status === "in_cubby") throw new Error(`Order ${orderId} is already ready for pickup`);
 
   const verdict: Verdict =
     opts?.force ?? (s.forceNext !== "auto" ? s.forceNext : randomVerdict());
@@ -204,6 +211,7 @@ export async function inspectOrder(
   return inspection;
 }
 
+/** assign-cubby == "mark ready for pickup". The cubby number is kept internally only. */
 export async function assignCubby(orderId: number, input: AssignCubbyInput = {}): Promise<Order> {
   await delay(150);
   const s = load();
@@ -221,7 +229,7 @@ export async function assignCubby(orderId: number, input: AssignCubbyInput = {})
       break;
     }
   }
-  if (free === null) throw new Error("All cubbies are full");
+  if (free === null) throw new Error("All pickup spots are full");
   order.status = "in_cubby";
   order.cubby = free;
   order.flag_reason = null;
@@ -233,7 +241,7 @@ export async function pickupOrder(orderId: number): Promise<Order> {
   await delay(150);
   const s = load();
   const order = findOrder(s, orderId);
-  if (order.status !== "in_cubby") throw new Error(`Order ${orderId} is not in a cubby`);
+  if (order.status !== "in_cubby") throw new Error(`Order ${orderId} is not ready for pickup`);
   order.status = "delivered";
   order.cubby = null;
   save(s);
@@ -249,6 +257,17 @@ export function getForceNext(): ForceMode {
 export function setForceNext(mode: ForceMode) {
   const s = load();
   s.forceNext = mode;
+  save(s);
+}
+
+export async function getInspectingIds(): Promise<number[]> {
+  return load().inspecting;
+}
+
+export async function setInspecting(orderId: number, on: boolean): Promise<void> {
+  const s = load();
+  s.inspecting = s.inspecting.filter((id) => id !== orderId);
+  if (on) s.inspecting.push(orderId);
   save(s);
 }
 

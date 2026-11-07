@@ -9,9 +9,9 @@ export function OrderItems({ items, size = "md" }: { items: OrderItem[]; size?: 
         const m = getMenuItem(it.menu_id);
         const mods = describeMods(it);
         return (
-          <li key={i} className="flex items-baseline gap-2">
+          <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span aria-hidden>{m?.emoji ?? "🍽️"}</span>
-            <span className="font-semibold">
+            <span className="font-semibold whitespace-nowrap">
               {it.qty}× {m?.name ?? it.menu_id}
             </span>
             {mods.length > 0 && (
